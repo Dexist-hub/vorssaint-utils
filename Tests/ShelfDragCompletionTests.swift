@@ -229,7 +229,8 @@ enum ShelfDragCompletionTests {
             let healedTile = Context.Tile(item: saved)
             healedTile.beginItemDrag(with: Context.NSEvent())
             let writer = healedTile.draggingItems.first?.item as? NSURL
-            suite.expect(writer?.path == recovered.path && service.items.first?.payload == .file(plain)
+            suite.expect(writer.map { ($0 as URL).standardizedFileURL.path } == recovered.standardizedFileURL.path
+                    && service.items.first?.payload == .file(plain)
                     && service.replacements.isEmpty,
                    "the bookmark reaches the actual drag before the deferred saved-item replacement")
             suite.expect(service.sourceOperationMask(for: .outsideApplication) == .copy,
@@ -237,7 +238,21 @@ enum ShelfDragCompletionTests {
             service.completeInternalDrag(dropAccepted: true)
             suite.expect(service.removed == [saved.id] && !service.internalDragHoldsPackageContent
                     && fm.fileExists(atPath: recovered.path),
-                   "an accepted protected copy removes only its Shelf tile and resets the drag state")
+                   "an accepted protected drag retires its tile and resets the drag state")
+
+            Context.reset()
+            let exported = root.appendingPathComponent("exported.jpeg")
+            let savedInside = item(recovered, bookmark: try recovered.bookmarkData())
+            try fm.moveItem(at: recovered, to: exported)
+            let exportedService = Context.Service.shared
+            exportedService.items = [savedInside]
+            let exportedTile = Context.Tile(item: savedInside)
+            exportedTile.beginItemDrag(with: Context.NSEvent())
+            let exportedWriter = exportedTile.draggingItems.first?.item as? NSURL
+            suite.expect(exportedWriter.map { ($0 as URL).standardizedFileURL.path } == exported.standardizedFileURL.path
+                    && exportedService.sourceOperationMask(for: .outsideApplication) == [.copy, .move],
+                   "a bookmark moved out of a package regains ordinary move behavior")
+            exportedService.completeInternalDrag(dropAccepted: false)
 
             // Batch flattening and mixed selections use the same copy-only
             // decision, while pinned and retained files remain copy-only too.
@@ -248,6 +263,7 @@ enum ShelfDragCompletionTests {
                                             icon: NSImage(), isImage: false)
             let batchService = Context.Service.shared
             batchService.items = [batch]
+            batchService.selection = [batch.id]
             let batchTile = Context.Tile(item: batch)
             batchTile.beginItemDrag(with: Context.NSEvent())
             suite.expect(batchTile.draggedIDs == [note.id, entry.id]
