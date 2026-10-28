@@ -208,9 +208,29 @@ enum ShelfDragCompletionTests {
                 let writer = tile.draggingItems.first?.item as? NSURL
                 suite.expect(writer?.path == url.path && service.activeInternalDragIDs == [entry.id],
                        "the production tile keeps the selected payload and identity for \(label)")
-                suite.expect(service.sourceOperationMask(for: .outsideApplication)
-                        == (protected ? .copy : [.copy, .move]),
+                let operations = service.sourceOperationMask(for: .outsideApplication)
+                suite.expect(operations == (protected ? .copy : [.copy, .move]),
                        "the production drag only protects package contents for \(label)")
+                // Exercise a same-volume destination using only the offered
+                // operation. Everything here belongs to this temporary fixture.
+                let destination = root.appendingPathComponent("drop-\(UUID())")
+                if operations.contains(.move) {
+                    try fm.moveItem(at: url, to: destination)
+                } else {
+                    try fm.copyItem(at: url, to: destination)
+                }
+                suite.expect(fm.fileExists(atPath: destination.path)
+                        && fm.fileExists(atPath: url.path) == protected,
+                       "the offered transfer leaves package contents in place and permits legitimate moves for \(label)")
+                if url == fileLink || url == packageLink {
+                    suite.expect(fm.fileExists(atPath: inside.path),
+                           "moving the symlink itself leaves its package target untouched")
+                }
+                if operations.contains(.move) {
+                    try fm.moveItem(at: destination, to: url)
+                } else {
+                    try fm.removeItem(at: destination)
+                }
                 suite.expect(service.sourceOperationMask(for: .withinApplication) == .move,
                        "internal Shelf stacking remains a move for \(label)")
                 service.completeInternalDrag(dropAccepted: false)
